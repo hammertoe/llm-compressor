@@ -160,9 +160,14 @@ def trace_subgraphs(
     # the beginning which does not contain a target. This adds a little more runtime,
     # and could be folded into the first subgraph in the future
     if len(subgraphs) != len(targets) + 1:
+        call_modules = [
+            str(node.target) for node in graph.graph.nodes if node.op == "call_module"
+        ]
         logger.warning(
             f"Expected {len(targets)} subgraphs, but only traced {len(subgraphs)}. "
-            "This is likely due to having wrapped code which calls sequential targets"
+            "This is likely due to having wrapped code which calls sequential targets. "
+            f"Found {len(find_target_nodes(graph, targets))} target nodes and "
+            f"call_module paths {call_modules[:20]}"
         )
 
     return subgraphs
