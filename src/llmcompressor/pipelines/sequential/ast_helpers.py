@@ -53,7 +53,7 @@ def autowrap_forward(module: torch.nn.Module, ignore: list[str]):
         )
 
     # get source code of module forward
-    source = inspect.getsource(module.forward)
+    source = inspect.getsource(inspect.unwrap(module.forward))
     source = textwrap.dedent(source)
     tree = ast.parse(source)
 

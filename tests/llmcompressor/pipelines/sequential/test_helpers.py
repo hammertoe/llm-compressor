@@ -1,9 +1,10 @@
 import math
+from functools import wraps
 
 import pytest
 import torch
 import torch.fx
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, PretrainedConfig
 
 from llmcompressor.args.dataset_arguments import DatasetArguments
 from llmcompressor.pipelines.sequential.helpers import (
@@ -43,6 +44,37 @@ class DummyModelMultipleSequentialLayers(torch.nn.Module):
         x = self.layer5(x)
         x = self.layer6(x)
         return x
+
+
+def forward_wrapper(forward):
+    @wraps(forward)
+    def wrapped(*args, **kwargs):
+        return forward(*args, **kwargs)
+
+    return wrapped
+
+
+class DecoratedDummyModel(torch.nn.Module):
+    config = PretrainedConfig()
+    device = torch.device("cpu")
+
+    def __init__(self):
+        super().__init__()
+        self.layer1 = torch.nn.Linear(10, 10)
+        self.layer2 = torch.nn.Linear(10, 10)
+        self.layer3 = torch.nn.Linear(10, 10)
+        self.layer4 = torch.nn.Linear(10, 10)
+        self.layer5 = torch.nn.Linear(10, 10)
+        self.layer6 = torch.nn.Linear(10, 10)
+
+    @forward_wrapper
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.layer5(x)
+        return self.layer6(x)
 
 
 def test_get_sequential_ancestors():
@@ -137,3 +169,16 @@ def test_trace_subgraphs(targets_per_subgraph):
             ]
         )
         assert num_targets_present == targets_per_subgraph
+
+
+def test_trace_subgraphs_unwraps_decorated_forward():
+    model = DecoratedDummyModel()
+
+    subgraphs = trace_subgraphs(
+        model,
+        {"x": torch.rand(1, 10)},
+        sequential_targets=["Linear"],
+        ignore=DatasetArguments().tracing_ignore,
+    )
+
+    assert len(subgraphs) == 7
