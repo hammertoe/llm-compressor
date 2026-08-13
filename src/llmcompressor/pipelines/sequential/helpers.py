@@ -163,11 +163,12 @@ def trace_subgraphs(
         call_modules = [
             str(node.target) for node in graph.graph.nodes if node.op == "call_module"
         ]
+        graph_nodes = [f"{node.op}:{node.target}" for node in graph.graph.nodes]
         logger.warning(
             f"Expected {len(targets)} subgraphs, but only traced {len(subgraphs)}. "
             "This is likely due to having wrapped code which calls sequential targets. "
             f"Found {len(find_target_nodes(graph, targets))} target nodes and "
-            f"call_module paths {call_modules[:20]}"
+            f"call_module paths {call_modules[:20]}; graph nodes {graph_nodes[:50]}"
         )
 
     return subgraphs
