@@ -68,6 +68,11 @@ def autowrap_forward(module: torch.nn.Module, ignore: list[str]):
     tree = auto_wrapper.auto_wrap(tree)
     source = ast.unparse(tree)
 
+    # log the full autowrapped forward for debugging tracing issues
+    logger.debug(f"---- Autowrapped forward for {module.__class__.__name__} ----")
+    logger.debug(source)
+    logger.debug("---- End autowrapped forward ----")
+
     # compile new forward function from autowrapped code
     filename = f"<Autowrapped {module.__class__.__name__} {id(module)}>"
     code = compile(source, filename=filename, mode="exec")
