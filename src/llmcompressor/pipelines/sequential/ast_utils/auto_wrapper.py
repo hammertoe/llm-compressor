@@ -8,6 +8,13 @@ from .control_flow_analyzer import ControlFlowAnalyzer
 from .name_analyzer import NameAnalyzer
 
 
+def _is_only_raise(node: ast.AST) -> bool:
+    """Return True when ``node`` consists solely of ``raise`` statements."""
+    if isinstance(node, ast.If):
+        return all(_is_only_raise(child) for child in node.body)
+    return isinstance(node, ast.Raise)
+
+
 class AutoWrapper(ast.NodeTransformer):
     """
     Automatically wraps untracable code according to the following patterns:
@@ -114,9 +121,18 @@ class AutoWrapper(ast.NodeTransformer):
             # statically evaluable. FX cannot constant-fold across `if`/`else`
             # branches that depend on values produced by the model itself, so
             # replacing a mixed test with `True`/`False` raises during tracing.
-            # Examples: ``(a is None) ^ (b is not None)`` or ``a is None and b is None``.
+            # Examples: ``(a is None) ^ (b is not None)`` or
+            # ``a is None and b is None``.
             if isinstance(node.test, ast.BoolOp):
                 raise Exception("If statement combines multiple conditions")
+
+            # force a wrap whenever the body raises. ``if True/False: raise ...``
+            # would otherwise become a literal raise during tracing, killing the
+            # trace before any call_module nodes are emitted.
+            for stmt in node.body:
+                if isinstance(stmt, ast.Raise):
+                    raise Exception("If statement raises")
+
             value = bool(self._eval_expr(node.test))
 
             # force a wrap if any assignments occur within the if statement
@@ -231,14 +247,14 @@ class AutoWrapper(ast.NodeTransformer):
         # assigned := names which are assigned by operations in node
         # cond_assigned := names which may be assigned depending on execution
         analyzer = NameAnalyzer(omit=self.namespace.keys())
-        unbound, assigned, conditionally_assigned = analyzer.analyze(node)
+        unbound, assigned, conditionally_asserved = analyzer.analyze(node)
 
         # args := names which already existed and are needed for ops or wrapped return
         # kwargs := names which are needed for return but did not already exist
         # returns := names which are assigned or could be assigned
-        args = (unbound | conditionally_assigned) & self._local_names
-        kwargs = conditionally_assigned - self._local_names
-        returns = assigned | conditionally_assigned
+        args = (unbound | conditionally_asserved) & self._local_names
+        kwargs = conditionally_asserved - self._local_names
+        returns = assigned | conditionally_asserved
         assert "self" not in args, "Cannot trace self, this should be in the namespace"
 
         # sort arguments for reproducability
@@ -257,6 +273,11 @@ class AutoWrapper(ast.NodeTransformer):
             kwarg=None,
         )
 
+        # The wrapper function is still executed by FX during tracing, so a
+        # body that only raises will kill the trace. Replace ``raise`` bodies
+        # with a no-op so the wrapper can be safely called.
+        body = [ast.Pass()] if _is_only_raise(node) else [node]
+
         # build body and return statement
         return_stmt = ast.Return(
             value=ast.Tuple(
@@ -264,7 +285,7 @@ class AutoWrapper(ast.NodeTransformer):
                 ctx=ast.Load(),
             )
         )
-        body = [node, return_stmt]
+        body.append(return_stmt)
 
         # build function definition, store in `_wrapper_fn_defs`
         fn_name = f"wrapped_{self._wrapped_counter}"

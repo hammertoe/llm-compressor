@@ -209,3 +209,31 @@ def test_trace_subgraphs_wraps_combined_condition():
     )
 
     assert len(subgraphs) == 2
+
+
+class RaiseConditionModel(torch.nn.Module):
+    config = PretrainedConfig()
+    device = torch.device("cpu")
+
+    def __init__(self):
+        super().__init__()
+        self.layer = torch.nn.Linear(10, 10)
+        self.input_ids = None
+
+    def forward(self, x):
+        if self.input_ids is None:
+            raise ValueError("must provide input_ids")
+        return self.layer(x)
+
+
+def test_trace_subgraphs_wraps_raise_condition():
+    model = RaiseConditionModel()
+
+    subgraphs = trace_subgraphs(
+        model,
+        {"x": torch.rand(1, 10)},
+        sequential_targets=["Linear"],
+        ignore=DatasetArguments().tracing_ignore,
+    )
+
+    assert len(subgraphs) == 2
