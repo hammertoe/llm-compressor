@@ -82,9 +82,15 @@ def autowrap_forward(module: torch.nn.Module, ignore: list[str]):
         filename,
     )
 
-    # patch forward with autowrapped forward
+    # patch forward with autowrapped forward on both the instance and the
+    # class. FX's tracer resolves forward via type(module).forward, so patching
+    # only the instance leaves the decorated class forward in place and FX
+    # cannot trace through decorators like @capture_outputs.
     new_forward = namespace["forward"].__get__(module)
-    with patch_attr(module, "forward", new_forward):
+    with (
+        patch_attr(module, "forward", new_forward),
+        patch_attr(type(module), "forward", namespace["forward"]),
+    ):
         yield
 
 
