@@ -42,8 +42,7 @@ class DummyModelMultipleSequentialLayers(torch.nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
         x = self.layer5(x)
-        x = self.layer6(x)
-        return x
+        return self.layer6(x)
 
 
 def forward_wrapper(forward):
@@ -75,6 +74,21 @@ class DecoratedDummyModel(torch.nn.Module):
         x = self.layer4(x)
         x = self.layer5(x)
         return self.layer6(x)
+
+
+class CombinedConditionModel(torch.nn.Module):
+    config = PretrainedConfig()
+    device = torch.device("cpu")
+
+    def __init__(self):
+        super().__init__()
+        self.layer = torch.nn.Linear(10, 10)
+        self.flag = True
+
+    def forward(self, x):
+        if (x is None) ^ (not self.flag):
+            raise ValueError("invalid combination")
+        return self.layer(x)
 
 
 def test_get_sequential_ancestors():
@@ -182,3 +196,16 @@ def test_trace_subgraphs_unwraps_decorated_forward():
     )
 
     assert len(subgraphs) == 7
+
+
+def test_trace_subgraphs_wraps_combined_condition():
+    model = CombinedConditionModel()
+
+    subgraphs = trace_subgraphs(
+        model,
+        {"x": torch.rand(1, 10)},
+        sequential_targets=["Linear"],
+        ignore=DatasetArguments().tracing_ignore,
+    )
+
+    assert len(subgraphs) == 2

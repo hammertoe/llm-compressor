@@ -110,6 +110,13 @@ class AutoWrapper(ast.NodeTransformer):
             Otherwise, return a wrapper function call + assignment
         """
         try:
+            # force a wrap whenever the test combines multiple conditions, even if
+            # statically evaluable. FX cannot constant-fold across `if`/`else`
+            # branches that depend on values produced by the model itself, so
+            # replacing a mixed test with `True`/`False` raises during tracing.
+            # Examples: ``(a is None) ^ (b is not None)`` or ``a is None and b is None``.
+            if isinstance(node.test, ast.BoolOp):
+                raise Exception("If statement combines multiple conditions")
             value = bool(self._eval_expr(node.test))
 
             # force a wrap if any assignments occur within the if statement
