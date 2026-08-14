@@ -8,6 +8,7 @@ import traceback
 
 import torch
 from compressed_tensors.utils import patch_attr
+from loguru import logger
 
 from llmcompressor.pipelines.sequential.ast_utils import AutoWrapper
 
